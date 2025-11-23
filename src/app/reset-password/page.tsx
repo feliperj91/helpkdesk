@@ -38,6 +38,24 @@ export default function ResetPasswordPage() {
         }
 
         try {
+            // Tenta obter a sessão atual
+            let { data: { session } } = await supabase.auth.getSession();
+
+            // Se não houver sessão, aguarda um momento pois o Supabase pode estar processando o hash da URL
+            if (!session) {
+                console.log('Sessão não encontrada, aguardando processamento do hash...');
+                for (let i = 0; i < 5; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const result = await supabase.auth.getSession();
+                    session = result.data.session;
+                    if (session) break;
+                }
+            }
+
+            if (!session) {
+                throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
+            }
+
             const { error } = await supabase.auth.updateUser({
                 password: password
             });
@@ -50,6 +68,7 @@ export default function ResetPasswordPage() {
                 router.push('/');
             }, 3000);
         } catch (err: any) {
+            console.error('Erro ao redefinir senha:', err);
             setError(err.message || 'Erro ao redefinir senha');
         } finally {
             setLoading(false);
