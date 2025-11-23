@@ -1,0 +1,754 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Building2, MapPin, Plus, Edit, Trash2, Loader2, ChevronDown, ChevronRight, Power, PowerOff, Search } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
+
+interface Unit {
+    id: string;
+    name: string;
+    description: string | null;
+    address: string | null;
+    active: boolean;
+    created_at: string;
+}
+
+interface Location {
+    id: string;
+    name: string;
+    unit_id: string;
+    description: string | null;
+    floor: string | null;
+    active: boolean;
+    created_at: string;
+}
+
+export default function UnitsPage() {
+    const { profile, loading: authLoading } = useAuth();
+    const router = useRouter();
+
+    const [units, setUnits] = useState<Unit[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
+    const [searchTerm, setSearchTerm] = useState('');
+    const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(5);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const [showNewUnitDialog, setShowNewUnitDialog] = useState(false);
+    const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+    const [newUnit, setNewUnit] = useState({ name: '' });
+
+    const [showNewLocationDialog, setShowNewLocationDialog] = useState(false);
+    const [selectedUnitForLocation, setSelectedUnitForLocation] = useState<string | null>(null);
+    const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+    const [newLocation, setNewLocation] = useState({ name: '' });
+
+    useEffect(() => {
+        if (!authLoading && profile && !['ADMIN', 'TECHNICIAN'].includes(profile.role)) {
+            router.push('/dashboard');
+        }
+    }, [profile, authLoading, router]);
+
+    useEffect(() => {
+        if (profile && ['ADMIN', 'TECHNICIAN'].includes(profile.role)) {
+            fetchData();
+        }
+    }, [profile]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, itemsPerPage]);
+
+    async function fetchData() {
+        try {
+            const [unitsResult, locationsResult] = await Promise.all([
+                supabase.from('units').select('*').order('name'),
+                supabase.from('locations').select('*').order('name')
+            ]);
+
+            if (unitsResult.error) throw unitsResult.error;
+            if (locationsResult.error) throw locationsResult.error;
+
+            setUnits(unitsResult.data || []);
+            setLocations(locationsResult.data || []);
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleCreateUnit() {
+        if (!newUnit.name.trim()) {
+            alert('Digite o nome da unidade');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('units')
+                .insert([{ name: newUnit.name, active: true }]);
+
+            if (error) throw error;
+
+            alert('Unidade criada com sucesso!');
+            setShowNewUnitDialog(false);
+            setNewUnit({ name: '' });
+            fetchData();
+        } catch (error: any) {
+            console.error('Error creating unit:', error);
+            alert(error.message || 'Erro ao criar unidade');
+        }
+    }
+
+    async function handleUpdateUnit() {
+        if (!editingUnit || !editingUnit.name.trim()) {
+            alert('Digite o nome da unidade');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('units')
+                .update({ name: editingUnit.name })
+                .eq('id', editingUnit.id);
+
+            if (error) throw error;
+
+            alert('Unidade atualizada com sucesso!');
+            setEditingUnit(null);
+            fetchData();
+        } catch (error: any) {
+            console.error('Error updating unit:', error);
+            alert(error.message || 'Erro ao atualizar unidade');
+        }
+    }
+
+    async function handleDeleteUnit(unitId: string) {
+        if (!confirm('Tem certeza que deseja excluir esta unidade?')) return;
+
+        try {
+            const { error } = await supabase
+                .from('units')
+                .delete()
+                .eq('id', unitId);
+
+            if (error) throw error;
+
+            alert('Unidade excluída com sucesso!');
+            fetchData();
+        } catch (error: any) {
+            console.error('Error deleting unit:', error);
+            alert(error.message || 'Erro ao excluir unidade');
+        }
+    }
+
+    async function handleToggleUnitStatus(unitId: string, currentStatus: boolean) {
+        console.log('🔄 Toggle Unit Status', { unitId, currentStatus });
+        const newStatus = !currentStatus;
+
+        try {
+            const { data, error } = await supabase
+                .from('units')
+                .update({ active: newStatus })
+                .eq('id', unitId)
+                .select();
+
+            console.log('📊 Supabase Response:', { data, error });
+
+            if (error) throw error;
+
+            setUnits(prev => prev.map(u => (u.id === unitId ? { ...u, active: newStatus } : u)));
+            console.log('✅ Status atualizado com sucesso!');
+        } catch (error: any) {
+            console.error('❌ Erro:', error);
+        }
+    }
+
+    async function handleCreateLocation() {
+        if (!newLocation.name.trim() || !selectedUnitForLocation) {
+            alert('Digite o nome do local');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('locations')
+                .insert([{
+                    name: newLocation.name,
+                    unit_id: selectedUnitForLocation,
+                    active: true
+                }]);
+
+            if (error) throw error;
+
+            alert('Local criado com sucesso!');
+            setShowNewLocationDialog(false);
+            setNewLocation({ name: '' });
+            setSelectedUnitForLocation(null);
+            fetchData();
+        } catch (error: any) {
+            console.error('Error creating location:', error);
+            alert(error.message || 'Erro ao criar local');
+        }
+    }
+
+    async function handleUpdateLocation() {
+        if (!editingLocation || !editingLocation.name.trim()) {
+            alert('Digite o nome do local');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('locations')
+                .update({ name: editingLocation.name })
+                .eq('id', editingLocation.id);
+
+            if (error) throw error;
+
+            alert('Local atualizado com sucesso!');
+            setEditingLocation(null);
+            fetchData();
+        } catch (error: any) {
+            console.error('Error updating location:', error);
+            alert(error.message || 'Erro ao atualizar local');
+        }
+    }
+
+    async function handleDeleteLocation(locationId: string) {
+        if (!confirm('Tem certeza que deseja excluir este local?')) return;
+
+        try {
+            const { error } = await supabase
+                .from('locations')
+                .delete()
+                .eq('id', locationId);
+
+            if (error) throw error;
+
+            alert('Local excluído com sucesso!');
+            fetchData();
+        } catch (error: any) {
+            console.error('Error deleting location:', error);
+            alert(error.message || 'Erro ao excluir local');
+        }
+    }
+
+    async function handleToggleLocationStatus(locationId: string, currentStatus: boolean) {
+        console.log('🔄 Toggle Location Status', { locationId, currentStatus });
+        const newStatus = !currentStatus;
+
+        try {
+            const { data, error } = await supabase
+                .from('locations')
+                .update({ active: newStatus })
+                .eq('id', locationId)
+                .select();
+
+            console.log('📊 Supabase Response:', { data, error });
+
+            if (error) throw error;
+
+            setLocations(prev => prev.map(l => (l.id === locationId ? { ...l, active: newStatus } : l)));
+            console.log('✅ Status atualizado com sucesso!');
+        } catch (error: any) {
+            console.error('❌ Erro:', error);
+        }
+    }
+
+    function toggleUnit(unitId: string) {
+        const newExpanded = new Set(expandedUnits);
+        if (newExpanded.has(unitId)) {
+            newExpanded.delete(unitId);
+        } else {
+            newExpanded.add(unitId);
+        }
+        setExpandedUnits(newExpanded);
+    }
+
+    function getUnitLocations(unitId: string) {
+        return locations.filter(l => l.unit_id === unitId);
+    }
+
+    function canDeleteUnit(unit: Unit) {
+        const unitLocations = getUnitLocations(unit.id);
+        return !unit.active || unitLocations.length === 0;
+    }
+
+    if (authLoading || loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+
+    if (!profile || !['ADMIN', 'TECHNICIAN'].includes(profile.role)) {
+        return null;
+    }
+
+    const activeUnits = units.filter(u => u.active).length;
+    const activeLocations = locations.filter(l => l.active).length;
+
+    const filteredUnits = units.filter(unit => {
+        const matchesSearch = unit.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const unitLocations = getUnitLocations(unit.id);
+        const matchesLocation = unitLocations.some(loc =>
+            loc.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        return matchesSearch || matchesLocation;
+    });
+
+    const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredUnits.length / itemsPerPage);
+    const startIndex = itemsPerPage === 'all' ? 0 : (currentPage - 1) * itemsPerPage;
+    const endIndex = itemsPerPage === 'all' ? filteredUnits.length : startIndex + itemsPerPage;
+    const displayedUnits = filteredUnits.slice(startIndex, endIndex);
+
+    return (
+        <>
+            <div className="space-y-6">
+                <Card className="border-slate-800 bg-slate-900/50">
+                    <CardContent className="pt-6">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h3 className="text-lg font-semibold text-white">Unidades Cadastradas</h3>
+                                <p className="text-sm text-slate-400 mt-1">
+                                    {units.length} unidade(s) ({activeUnits} ativa(s)) • {locations.length} local(is) ({activeLocations} ativo(s))
+                                </p>
+                            </div>
+                            <Button onClick={() => setShowNewUnitDialog(true)}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Nova Unidade
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-slate-800 bg-slate-900/50">
+                    <CardContent className="pt-6">
+                        <div className="flex gap-4">
+                            <div className="flex-1 relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <Input
+                                    placeholder="Buscar unidades ou locais..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-10 bg-slate-950/50 border-slate-800"
+                                />
+                            </div>
+                            <div className="w-40">
+                                <Select
+                                    value={itemsPerPage.toString()}
+                                    onValueChange={(value) => setItemsPerPage(value === 'all' ? 'all' : parseInt(value))}
+                                >
+                                    <SelectTrigger className="bg-slate-950/50 border-slate-800">
+                                        <SelectValue placeholder="Exibir" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="5">5 unidades</SelectItem>
+                                        <SelectItem value="10">10 unidades</SelectItem>
+                                        <SelectItem value="20">20 unidades</SelectItem>
+                                        <SelectItem value="50">50 unidades</SelectItem>
+                                        <SelectItem value="all">Todas</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        {searchTerm && (
+                            <p className="text-sm text-slate-400 mt-3">
+                                {filteredUnits.length} resultado(s) encontrado(s)
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                    {displayedUnits.map((unit) => {
+                        const unitLocations = getUnitLocations(unit.id);
+                        const isExpanded = expandedUnits.has(unit.id);
+                        const canDelete = canDeleteUnit(unit);
+
+                        return (
+                            <Card key={unit.id} className={cn(
+                                "border-slate-800 transition-opacity",
+                                !unit.active && "opacity-60 bg-slate-900/30"
+                            )}>
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3 flex-1">
+                                            <button
+                                                onClick={() => toggleUnit(unit.id)}
+                                                className="text-slate-400 hover:text-white transition-colors"
+                                            >
+                                                {isExpanded ? (
+                                                    <ChevronDown className="h-5 w-5" />
+                                                ) : (
+                                                    <ChevronRight className="h-5 w-5" />
+                                                )}
+                                            </button>
+                                            <Building2 className={cn(
+                                                "h-5 w-5",
+                                                unit.active ? "text-primary" : "text-slate-500"
+                                            )} />
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <CardTitle className="text-white text-lg">{unit.name}</CardTitle>
+                                                    {!unit.active && (
+                                                        <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-400">
+                                                            Inativa
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-slate-500 px-2 py-1 rounded bg-slate-800">
+                                                {unitLocations.length} local(is)
+                                            </span>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    setSelectedUnitForLocation(unit.id);
+                                                    setShowNewLocationDialog(true);
+                                                }}
+                                                disabled={!unit.active}
+                                            >
+                                                <Plus className="h-4 w-4 mr-1" />
+                                                Adicionar Local
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleToggleUnitStatus(unit.id, unit.active)}
+                                                title={unit.active ? 'Inativar' : 'Ativar'}
+                                            >
+                                                {unit.active ? (
+                                                    <Power className="h-4 w-4 text-green-400" />
+                                                ) : (
+                                                    <PowerOff className="h-4 w-4 text-slate-500" />
+                                                )}
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => setEditingUnit(unit)}
+                                            >
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleDeleteUnit(unit.id)}
+                                                disabled={!canDelete}
+                                                title={!canDelete ? 'Inative a unidade ou remova os locais primeiro' : 'Excluir unidade'}
+                                            >
+                                                <Trash2 className={cn(
+                                                    "h-4 w-4",
+                                                    canDelete ? "text-red-400" : "text-slate-600"
+                                                )} />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+
+                                {isExpanded && unitLocations.length > 0 && (
+                                    <CardContent className="pt-0">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-8">
+                                            {unitLocations.map((location) => (
+                                                <div
+                                                    key={location.id}
+                                                    className={cn(
+                                                        "p-3 rounded-lg border transition-all",
+                                                        location.active
+                                                            ? "bg-slate-800/50 border-slate-700 hover:border-slate-600"
+                                                            : "bg-slate-800/20 border-slate-800 opacity-60"
+                                                    )}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex items-start gap-2 flex-1">
+                                                            <MapPin className={cn(
+                                                                "h-4 w-4 mt-0.5",
+                                                                location.active ? "text-blue-400" : "text-slate-500"
+                                                            )} />
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="text-sm font-medium text-white">{location.name}</p>
+                                                                    {!location.active && (
+                                                                        <span className="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">
+                                                                            Inativo
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-1">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 p-0"
+                                                                onClick={() => handleToggleLocationStatus(location.id, location.active)}
+                                                                title={location.active ? 'Inativar' : 'Ativar'}
+                                                            >
+                                                                {location.active ? (
+                                                                    <Power className="h-3 w-3 text-green-400" />
+                                                                ) : (
+                                                                    <PowerOff className="h-3 w-3 text-slate-500" />
+                                                                )}
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 p-0"
+                                                                onClick={() => setEditingLocation(location)}
+                                                            >
+                                                                <Edit className="h-3 w-3" />
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 w-7 p-0"
+                                                                onClick={() => handleDeleteLocation(location.id)}
+                                                            >
+                                                                <Trash2 className="h-3 w-3 text-red-400" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                )}
+
+                                {isExpanded && unitLocations.length === 0 && (
+                                    <CardContent className="pt-0">
+                                        <div className="text-center py-8 text-slate-500 text-sm pl-8">
+                                            Nenhum local cadastrado nesta unidade
+                                        </div>
+                                    </CardContent>
+                                )}
+                            </Card>
+                        );
+                    })}
+
+                    {displayedUnits.length === 0 && (
+                        <Card className="border-slate-800 bg-slate-900/50">
+                            <CardContent className="py-12 text-center text-slate-500">
+                                {searchTerm ? 'Nenhuma unidade encontrada' : 'Nenhuma unidade cadastrada'}
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+
+                {itemsPerPage !== 'all' && filteredUnits.length > 0 && (
+                    <Card className="border-slate-800 bg-slate-900/50">
+                        <CardContent className="pt-6">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm text-slate-400">
+                                    Exibindo {startIndex + 1} a {Math.min(endIndex, filteredUnits.length)} de {filteredUnits.length} unidade(s)
+                                </p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                        disabled={currentPage === 1}
+                                        className="border-slate-800"
+                                    >
+                                        Anterior
+                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                                            let page;
+                                            if (totalPages <= 5) {
+                                                page = i + 1;
+                                            } else if (currentPage <= 3) {
+                                                page = i + 1;
+                                            } else if (currentPage >= totalPages - 2) {
+                                                page = totalPages - 4 + i;
+                                            } else {
+                                                page = currentPage - 2 + i;
+                                            }
+                                            return (
+                                                <Button
+                                                    key={page}
+                                                    variant={currentPage === page ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => setCurrentPage(page)}
+                                                    className={cn(
+                                                        "w-8",
+                                                        currentPage !== page && "border-slate-800"
+                                                    )}
+                                                >
+                                                    {page}
+                                                </Button>
+                                            );
+                                        })}
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="border-slate-800"
+                                    >
+                                        Próxima
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+
+            <Dialog open={showNewUnitDialog} onOpenChange={setShowNewUnitDialog}>
+                <DialogContent className="border-slate-800 bg-slate-900">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Nova Unidade</DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Cadastre uma nova unidade no sistema
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="unit-name">Nome da Unidade *</Label>
+                            <Input
+                                id="unit-name"
+                                value={newUnit.name}
+                                onChange={(e) => setNewUnit({ name: e.target.value })}
+                                placeholder="Ex: Matriz, Filial Centro"
+                                className="bg-slate-950/50 border-slate-800"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setShowNewUnitDialog(false)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleCreateUnit}>
+                            Criar Unidade
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!editingUnit} onOpenChange={() => setEditingUnit(null)}>
+                <DialogContent className="border-slate-800 bg-slate-900">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Editar Unidade</DialogTitle>
+                    </DialogHeader>
+                    {editingUnit && (
+                        <div className="space-y-4">
+                            <div>
+                                <Label htmlFor="edit-unit-name">Nome da Unidade *</Label>
+                                <Input
+                                    id="edit-unit-name"
+                                    value={editingUnit.name}
+                                    onChange={(e) => setEditingUnit({ ...editingUnit, name: e.target.value })}
+                                    className="bg-slate-950/50 border-slate-800"
+                                />
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setEditingUnit(null)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleUpdateUnit}>
+                            Salvar Alterações
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showNewLocationDialog} onOpenChange={setShowNewLocationDialog}>
+                <DialogContent className="border-slate-800 bg-slate-900">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Novo Local</DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Adicione um novo local à unidade
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="location-name">Nome do Local *</Label>
+                            <Input
+                                id="location-name"
+                                value={newLocation.name}
+                                onChange={(e) => setNewLocation({ name: e.target.value })}
+                                placeholder="Ex: Sala 101, Recepção, TI"
+                                className="bg-slate-950/50 border-slate-800"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => {
+                            setShowNewLocationDialog(false);
+                            setSelectedUnitForLocation(null);
+                        }}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleCreateLocation}>
+                            Criar Local
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!editingLocation} onOpenChange={() => setEditingLocation(null)}>
+                <DialogContent className="border-slate-800 bg-slate-900">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Editar Local</DialogTitle>
+                    </DialogHeader>
+                    {editingLocation && (
+                        <div className="space-y-4">
+                            <div>
+                                <Label htmlFor="edit-location-name">Nome do Local *</Label>
+                                <Input
+                                    id="edit-location-name"
+                                    value={editingLocation.name}
+                                    onChange={(e) => setEditingLocation({ ...editingLocation, name: e.target.value })}
+                                    className="bg-slate-950/50 border-slate-800"
+                                />
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setEditingLocation(null)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleUpdateLocation}>
+                            Salvar Alterações
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
