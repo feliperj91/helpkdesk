@@ -41,12 +41,62 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const pathname = usePathname();
 
     useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        console.log('🔐 AuthProvider: Inicializando...');
+
+        // Verificar sessão imediatamente
+        const checkSession = async () => {
+            try {
+                console.log('🔍 AuthProvider: Verificando sessão existente...');
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    console.error('❌ AuthProvider: Erro ao obter sessão:', error);
+                    setLoading(false);
+                    return;
+                }
+
+                console.log('📋 AuthProvider: Sessão obtida:', session ? '✓ Ativa' : '✗ Nenhuma');
+
+                setSession(session);
+                setUser(session?.user ?? null);
+
+                if (session?.user) {
+                    console.log('👤 AuthProvider: Buscando perfil do usuário...');
+                    const { data: profileData, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (profileError) {
+                        console.error('❌ AuthProvider: Erro ao buscar perfil:', profileError);
+                    } else {
+                        console.log('✓ AuthProvider: Perfil carregado:', profileData?.role);
+                    }
+
+                    setProfile(profileData);
+                } else {
+                    setProfile(null);
+                }
+
+                setLoading(false);
+            } catch (err) {
+                console.error('❌ AuthProvider: Erro inesperado:', err);
+                setLoading(false);
+            }
+        };
+
+        checkSession();
+
+        // Escutar mudanças de autenticação
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log('🔄 AuthProvider: Mudança de estado:', event, session ? '✓ Sessão ativa' : '✗ Sem sessão');
+
             setSession(session);
             setUser(session?.user ?? null);
 
             if (session?.user) {
-                // Fetch user profile
+                console.log('👤 AuthProvider: Buscando perfil após mudança...');
                 const { data: profileData } = await supabase
                     .from('profiles')
                     .select('*')
@@ -61,18 +111,33 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             setLoading(false);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            console.log('🔌 AuthProvider: Desconectando listener');
+            subscription.unsubscribe();
+        };
     }, []);
 
     // Redirect logic based on authentication
     useEffect(() => {
-        if (loading) return;
+        if (loading) {
+            console.log('⏳ AuthProvider: Aguardando carregamento...');
+            return;
+        }
 
         const publicRoutes = ['/', '/register', '/forgot-password', '/reset-password'];
         const isPublicRoute = publicRoutes.includes(pathname);
 
+        console.log('🔀 AuthProvider: Verificando redirecionamento', {
+            pathname,
+            isPublicRoute,
+            hasUser: !!user
+        });
+
         if (!user && !isPublicRoute) {
+            console.log('🚫 AuthProvider: Usuário não autenticado, redirecionando para login');
             router.push('/');
+        } else if (user) {
+            console.log('✅ AuthProvider: Usuário autenticado:', user.email);
         }
     }, [user, loading, pathname, router]);
 
