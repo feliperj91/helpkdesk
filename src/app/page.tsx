@@ -80,17 +80,20 @@ export default function Home() {
 
             console.log('✅ [LOGIN] Sucesso via API REST! Configurando sessão...');
 
-            // Hidratar a sessão no SDK para o resto do app funcionar
-            const { error: sessionError } = await supabase.auth.setSession({
+            // Hidratar a sessão no SDK com timeout para não travar
+            const setSessionPromise = supabase.auth.setSession({
                 access_token: data.access_token,
                 refresh_token: data.refresh_token
             });
 
-            if (sessionError) {
-                console.error('❌ [LOGIN] Erro ao salvar sessão:', sessionError);
-                // Mesmo com erro no setSession, vamos tentar redirecionar pois o cookie pode ter sido setado
-            }
+            const sessionTimeoutPromise = new Promise((resolve) =>
+                setTimeout(() => resolve({ error: 'TIMEOUT_SESSION' }), 1000)
+            );
 
+            // Não vamos deixar o setSession travar o login
+            await Promise.race([setSessionPromise, sessionTimeoutPromise]);
+
+            console.log('🔄 [LOGIN] Redirecionando para dashboard...');
             router.push('/dashboard');
 
         } catch (err: any) {
