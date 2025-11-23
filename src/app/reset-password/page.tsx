@@ -21,17 +21,33 @@ export default function ResetPasswordPage() {
     const router = useRouter();
 
     useEffect(() => {
-        // Apenas para log, não bloqueia nada
-        const checkTokens = () => {
+        // Verificar erros ou tokens na URL ao carregar
+        const checkUrlParams = () => {
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+            // Verificar se há erro retornado pelo Supabase
+            const error = hashParams.get('error');
+            const errorDescription = hashParams.get('error_description');
+            const errorCode = hashParams.get('error_code');
+
+            if (error) {
+                console.error('❌ [INIT] Erro na URL:', { error, errorCode, errorDescription });
+                if (errorCode === 'otp_expired') {
+                    setError('Este link expirou ou já foi utilizado. Por favor, solicite uma nova redefinição de senha.');
+                } else {
+                    setError(decodeURIComponent(errorDescription || 'Erro desconhecido no link.').replace(/\+/g, ' '));
+                }
+                return;
+            }
+
             const accessToken = hashParams.get('access_token');
             if (accessToken) {
-                console.log('� [INIT] Token detectado na URL.');
+                console.log('🔑 [INIT] Token detectado na URL.');
             } else {
-                console.log('⚠️ [INIT] Nenhum token detectado (pode ser problema se não estiver logado).');
+                console.log('⚠️ [INIT] Nenhum token detectado.');
             }
         };
-        checkTokens();
+        checkUrlParams();
     }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
@@ -62,7 +78,7 @@ export default function ResetPasswordPage() {
                 throw new Error('Token de acesso não encontrado. Por favor, clique no link do email novamente.');
             }
 
-            console.log('� [RESET] Token encontrado, fazendo requisição direta...');
+            console.log('🔑 [RESET] Token encontrado, fazendo requisição direta...');
 
             // 2. Construir a URL da API
             const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -148,11 +164,13 @@ export default function ResetPasswordPage() {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="bg-slate-950/50 border-slate-800 pr-10"
+                                    disabled={!!error && error.includes('link expirou')}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                                    disabled={!!error && error.includes('link expirou')}
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
@@ -168,18 +186,20 @@ export default function ResetPasswordPage() {
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     className="bg-slate-950/50 border-slate-800 pr-10"
+                                    disabled={!!error && error.includes('link expirou')}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                                    disabled={!!error && error.includes('link expirou')}
                                 >
                                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
                         </div>
 
-                        <Button type="submit" className="w-full" disabled={loading}>
+                        <Button type="submit" className="w-full" disabled={loading || (!!error && error.includes('link expirou'))}>
                             {loading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
