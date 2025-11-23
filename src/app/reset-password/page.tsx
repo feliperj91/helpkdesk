@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,28 @@ export default function ResetPasswordPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [sessionStatus, setSessionStatus] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking');
     const router = useRouter();
+
+    // Check session on mount
+    useEffect(() => {
+        const checkSession = async () => {
+            console.log('Verificando sessão inicial...');
+            const { data: { session } } = await supabase.auth.getSession();
+            console.log('Status da sessão:', session ? 'Autenticado' : 'Não autenticado');
+            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+        };
+
+        checkSession();
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log('Mudança de auth:', _event, !!session);
+            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -124,6 +145,16 @@ export default function ResetPasswordPage() {
 
             <Card className="w-full max-w-md relative z-10 border-slate-800 bg-slate-900/50 backdrop-blur-xl">
                 <CardHeader className="space-y-1 text-center">
+                    <div className="flex justify-center mb-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${sessionStatus === 'authenticated' ? 'bg-emerald-500/10 text-emerald-500' :
+                                sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
+                                    'bg-blue-500/10 text-blue-500'
+                            }`}>
+                            {sessionStatus === 'authenticated' ? 'Conectado' :
+                                sessionStatus === 'unauthenticated' ? 'Desconectado' :
+                                    'Verificando conexão...'}
+                        </span>
+                    </div>
                     <CardTitle className="text-3xl font-bold tracking-tight text-white">Nova Senha</CardTitle>
                     <CardDescription className="text-slate-400">
                         Digite sua nova senha abaixo
