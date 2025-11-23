@@ -42,50 +42,90 @@ export default function ResetPasswordPage() {
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
+        console.log('🚀 [RESET] Função handleResetPassword iniciada');
         setLoading(true);
         setError(null);
 
         if (password !== confirmPassword) {
+            console.log('❌ [RESET] Senhas não coincidem');
             setError('As senhas não coincidem');
             setLoading(false);
             return;
         }
 
         if (password.length < 6) {
+            console.log('❌ [RESET] Senha muito curta');
             setError('A senha deve ter pelo menos 6 caracteres');
             setLoading(false);
             return;
         }
 
+        console.log('✅ [RESET] Validações iniciais passaram');
+
         try {
-            const { data: { session } } = await supabase.auth.getSession();
+            console.log('🔍 [RESET] Iniciando verificação de sessão...');
+            const sessionStart = Date.now();
+
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+            const sessionTime = Date.now() - sessionStart;
+            console.log(`⏱️ [RESET] Tempo para obter sessão: ${sessionTime}ms`);
+            console.log('📋 [RESET] Sessão:', session ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
+            console.log('📋 [RESET] Erro de sessão:', sessionError);
+
+            if (sessionError) {
+                console.error('❌ [RESET] Erro ao obter sessão:', sessionError);
+                throw sessionError;
+            }
 
             if (!session) {
+                console.error('❌ [RESET] Sessão não encontrada');
                 throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
             }
 
-            const { error: updateError } = await supabase.auth.updateUser({
+            console.log('✅ [RESET] Sessão válida, iniciando atualização de senha...');
+            const updateStart = Date.now();
+
+            const { data: updateData, error: updateError } = await supabase.auth.updateUser({
                 password: password
             });
 
-            if (updateError) throw updateError;
+            const updateTime = Date.now() - updateStart;
+            console.log(`⏱️ [RESET] Tempo para atualizar senha: ${updateTime}ms`);
+            console.log('📊 [RESET] Dados da atualização:', updateData);
+            console.log('📊 [RESET] Erro da atualização:', updateError);
 
+            if (updateError) {
+                console.error('❌ [RESET] Erro ao atualizar senha:', updateError);
+                throw updateError;
+            }
+
+            console.log('🎉 [RESET] Senha atualizada com sucesso!');
             setSuccess(true);
 
             setTimeout(() => {
+                console.log('🔄 [RESET] Redirecionando para login...');
                 router.push('/');
             }, 3000);
         } catch (err: any) {
+            console.error('💥 [RESET] Erro capturado:', err);
+            console.error('💥 [RESET] Tipo do erro:', typeof err);
+            console.error('💥 [RESET] Mensagem:', err?.message);
+            console.error('💥 [RESET] Stack:', err?.stack);
+
             let errorMessage = 'Erro ao redefinir senha';
 
             if (err.message?.toLowerCase().includes('same password')) {
+                console.log('⚠️ [RESET] Erro: Senha igual à atual');
                 errorMessage = 'A nova senha não pode ser igual à senha atual. Por favor, escolha uma senha diferente.';
             } else if (err.message) {
                 errorMessage = err.message;
             }
 
+            console.log('📢 [RESET] Exibindo erro para usuário:', errorMessage);
             setError(errorMessage);
         } finally {
+            console.log('🏁 [RESET] Finalizando, setLoading(false)');
             setLoading(false);
         }
     };
