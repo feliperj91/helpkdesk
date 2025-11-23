@@ -58,25 +58,70 @@ export default function ResetPasswordPage() {
         }
 
         try {
-            const { data: { session } } = await supabase.auth.getSession();
+            console.log('🔄 Iniciando redefinição de senha...');
+
+            // Verificar sessão com timeout
+            const sessionPromise = supabase.auth.getSession();
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Tempo limite ao verificar sessão')), 10000)
+            );
+
+            const { data: { session }, error: sessionError } = await Promise.race([
+                sessionPromise,
+                timeoutPromise
+            ]) as any;
+
+            console.log('📋 Sessão:', session ? 'Encontrada' : 'Não encontrada');
+            console.log('❌ Erro de sessão:', sessionError);
+
+            if (sessionError) {
+                throw sessionError;
+            }
 
             if (!session) {
                 throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
             }
 
-            const { error } = await supabase.auth.updateUser({
-                password: password
-            });
+            console.log('🔐 Atualizando senha...');
 
-            if (error) throw error;
+            // Atualizar senha com timeout
+            const updatePromise = supabase.auth.updateUser({ password: password });
+            const updateTimeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Tempo limite ao atualizar senha')), 15000)
+            );
 
+            const { data: updateData, error: updateError } = await Promise.race([
+                updatePromise,
+                updateTimeoutPromise
+            ]) as any;
+
+            console.log('✅ Resultado da atualização:', updateData);
+            console.log('❌ Erro na atualização:', updateError);
+
+            if (updateError) throw updateError;
+
+            console.log('🎉 Senha atualizada com sucesso!');
             setSuccess(true);
 
             setTimeout(() => {
                 router.push('/');
             }, 3000);
         } catch (err: any) {
-            setError(err.message || 'Erro ao redefinir senha');
+            console.error('💥 Erro completo:', err);
+            console.error('💥 Mensagem do erro:', err.message);
+            console.error('💥 Stack:', err.stack);
+
+            let errorMessage = 'Erro ao redefinir senha';
+
+            if (err.message?.includes('Tempo limite')) {
+                errorMessage = 'A operação demorou muito. Verifique sua conexão e tente novamente.';
+            } else if (err.message?.includes('sessão')) {
+                errorMessage = 'Link expirado ou inválido. Solicite um novo link de redefinição.';
+            } else if (err.message) {
+                errorMessage = err.message;
+            }
+
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
