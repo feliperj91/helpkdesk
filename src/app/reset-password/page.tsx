@@ -21,25 +21,19 @@ export default function ResetPasswordPage() {
     const [sessionStatus, setSessionStatus] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking');
     const router = useRouter();
 
-    // Check session on mount
     useEffect(() => {
         const checkSession = async () => {
             try {
-                console.log('Verificando sessão...');
                 const { data: { session } } = await supabase.auth.getSession();
-                console.log('Sessão encontrada:', !!session);
                 setSessionStatus(session ? 'authenticated' : 'unauthenticated');
             } catch (err) {
-                console.error('Erro ao verificar sessão:', err);
                 setSessionStatus('unauthenticated');
             }
         };
 
         checkSession();
 
-        // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            console.log('Mudança de auth:', _event, !!session);
             setSessionStatus(session ? 'authenticated' : 'unauthenticated');
         });
 
@@ -64,29 +58,24 @@ export default function ResetPasswordPage() {
         }
 
         try {
-            console.log('Verificando sessão antes de atualizar senha...');
             const { data: { session } } = await supabase.auth.getSession();
 
             if (!session) {
                 throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
             }
 
-            console.log('Atualizando senha...');
             const { error } = await supabase.auth.updateUser({
                 password: password
             });
 
             if (error) throw error;
 
-            console.log('Senha atualizada com sucesso!');
             setSuccess(true);
 
-            // Redirect to login after 3 seconds
             setTimeout(() => {
                 router.push('/');
             }, 3000);
         } catch (err: any) {
-            console.error('Erro ao redefinir senha:', err);
             setError(err.message || 'Erro ao redefinir senha');
         } finally {
             setLoading(false);
@@ -96,7 +85,6 @@ export default function ResetPasswordPage() {
     if (success) {
         return (
             <main className="flex min-h-screen flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-950">
-                {/* Background Effects */}
                 <div className="absolute inset-0 overflow-hidden">
                     <div className="absolute -top-[40%] -left-[20%] w-[70%] h-[70%] rounded-full bg-primary/10 blur-[120px]" />
                     <div className="absolute -bottom-[40%] -right-[20%] w-[70%] h-[70%] rounded-full bg-primary/10 blur-[120px]" />
@@ -129,7 +117,6 @@ export default function ResetPasswordPage() {
 
     return (
         <main className="flex min-h-screen flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-950">
-            {/* Background Effects */}
             <div className="absolute inset-0 overflow-hidden">
                 <div className="absolute -top-[40%] -left-[20%] w-[70%] h-[70%] rounded-full bg-primary/10 blur-[120px]" />
                 <div className="absolute -bottom-[40%] -right-[20%] w-[70%] h-[70%] rounded-full bg-primary/10 blur-[120px]" />

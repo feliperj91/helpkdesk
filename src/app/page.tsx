@@ -23,35 +23,29 @@ export default function Home() {
         setError(null);
 
         try {
-            // Verificar se o Supabase está configurado
             if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
                 throw new Error('Configuração do Supabase não encontrada. Verifique as variáveis de ambiente.');
             }
-
-            console.log('Tentando fazer login...', { email });
 
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
-            console.log('Resposta do login:', { data, error });
-
             if (error) throw error;
 
             if (data?.session) {
-                console.log('Login bem-sucedido, redirecionando...');
                 router.push('/dashboard');
             } else {
                 throw new Error('Sessão não foi criada após o login');
             }
         } catch (err: any) {
-            console.error('Erro no login:', err);
             setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
         } finally {
             setLoading(false);
         }
     };
+
 
     return (
         <main className="flex min-h-screen flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-950">
