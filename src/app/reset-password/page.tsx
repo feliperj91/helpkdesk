@@ -38,19 +38,18 @@ export default function ResetPasswordPage() {
         }
 
         try {
-            // Tenta obter a sessão atual
-            let { data: { session } } = await supabase.auth.getSession();
+            // Tenta obter a sessão atual com timeout
+            console.log('Verificando sessão...');
 
-            // Se não houver sessão, aguarda um momento pois o Supabase pode estar processando o hash da URL
-            if (!session) {
-                console.log('Sessão não encontrada, aguardando processamento do hash...');
-                for (let i = 0; i < 5; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    const result = await supabase.auth.getSession();
-                    session = result.data.session;
-                    if (session) break;
-                }
-            }
+            const sessionTimeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Tempo limite ao verificar sessão. Recarregue a página.')), 5000);
+            });
+
+            const sessionPromise = supabase.auth.getSession();
+
+            let { data: { session } } = await Promise.race([sessionPromise, sessionTimeoutPromise]) as any;
+
+            console.log('Sessão encontrada:', !!session);
 
             if (!session) {
                 throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
