@@ -43,32 +43,14 @@ export default function ResetPasswordPage() {
                 }
             } catch (e) {
                 console.error('FALHA CRÍTICA DE REDE:', e);
-                alert('Erro de Conexão: O navegador não consegue acessar o servidor do Supabase. Verifique se há bloqueadores de anúncio ou firewall impedindo a conexão.');
-            }
-        };
+                // Listen for auth changes
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                    console.log('Mudança de auth:', _event, !!session);
+                    setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+                });
 
-        const checkSession = async () => {
-            console.log('Verificando sessão inicial...');
-            console.log('Supabase URL Configurada:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Sim (Inicia com ' + (process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 15) || '') + '...)' : 'NÃO - Variável indefinida');
-
-            // Run connection test first
-            await checkConnection();
-
-            const { data: { session } } = await supabase.auth.getSession();
-            console.log('Status da sessão:', session ? 'Autenticado' : 'Não autenticado');
-            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
-        };
-
-        checkSession();
-
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            console.log('Mudança de auth:', _event, !!session);
-            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
-        });
-
-        return () => subscription.unsubscribe();
-    }, []);
+                return () => subscription.unsubscribe();
+            }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -176,8 +158,8 @@ export default function ResetPasswordPage() {
                 <CardHeader className="space-y-1 text-center">
                     <div className="flex justify-center mb-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${sessionStatus === 'authenticated' ? 'bg-emerald-500/10 text-emerald-500' :
-                                sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
-                                    'bg-blue-500/10 text-blue-500'
+                            sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
+                                'bg-blue-500/10 text-blue-500'
                             }`}>
                             {sessionStatus === 'authenticated' ? 'Conectado' :
                                 sessionStatus === 'unauthenticated' ? 'Desconectado' :
