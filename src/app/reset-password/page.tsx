@@ -18,52 +18,20 @@ export default function ResetPasswordPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
-    // Simplificando: não vamos usar o status para bloquear a UI
-    const [sessionStatus, setSessionStatus] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking');
     const router = useRouter();
 
     useEffect(() => {
-        // Tenta recuperar a sessão silenciosamente ao carregar
-        const initSession = async () => {
-            try {
-                const hashParams = new URLSearchParams(window.location.hash.substring(1));
-                const accessToken = hashParams.get('access_token');
-                const refreshToken = hashParams.get('refresh_token');
-                const type = hashParams.get('type');
-
-                if (accessToken && type === 'recovery') {
-                    console.log('🔐 [INIT] Tentando estabelecer sessão com tokens da URL...');
-                    // Não vamos esperar (await) isso bloquear a UI se travar
-                    supabase.auth.setSession({
-                        access_token: accessToken,
-                        refresh_token: refreshToken || ''
-                    }).then(({ data, error }) => {
-                        console.log('📊 [INIT] Resultado setSession:', { session: !!data.session, error });
-                        if (data.session) setSessionStatus('authenticated');
-                    });
-                } else {
-                    const { data } = await supabase.auth.getSession();
-                    if (data.session) setSessionStatus('authenticated');
-                    else setSessionStatus('unauthenticated');
-                }
-            } catch (e) {
-                console.error('Erro no init:', e);
-                setSessionStatus('unauthenticated');
+        // Apenas para log, não bloqueia nada
+        const checkTokens = () => {
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            const accessToken = hashParams.get('access_token');
+            if (accessToken) {
+                console.log('� [INIT] Token detectado na URL.');
+            } else {
+                console.log('⚠️ [INIT] Nenhum token detectado (pode ser problema se não estiver logado).');
             }
         };
-
-        initSession();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log('🔄 [AUTH] Evento:', event);
-            if (session) setSessionStatus('authenticated');
-            if (event === 'USER_UPDATED') {
-                setSuccess(true);
-                setLoading(false);
-            }
-        });
-
-        return () => subscription.unsubscribe();
+        checkTokens();
     }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
@@ -77,35 +45,57 @@ export default function ResetPasswordPage() {
             return;
         }
 
-        try {
-            console.log('🚀 [RESET] Iniciando reset de senha...');
+        if (password.length < 6) {
+            setError('A senha deve ter pelo menos 6 caracteres');
+            setLoading(false);
+            return;
+        }
 
-            // Tenta garantir que temos uma sessão antes de atualizar
-            // Se o setSession anterior travou, vamos tentar forçar aqui com timeout
+        try {
+            console.log('🚀 [RESET] Iniciando reset de senha (Modo Direto)...');
+
+            // 1. Obter tokens da URL
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             const accessToken = hashParams.get('access_token');
-            const refreshToken = hashParams.get('refresh_token');
 
-            if (accessToken) {
-                console.log('🔄 [RESET] Reforçando sessão antes do update...');
-                await Promise.race([
-                    supabase.auth.setSession({
-                        access_token: accessToken,
-                        refresh_token: refreshToken || ''
-                    }),
-                    new Promise(r => setTimeout(r, 2000)) // Timeout curto de 2s para não travar
-                ]);
+            if (!accessToken) {
+                throw new Error('Token de acesso não encontrado. Por favor, clique no link do email novamente.');
             }
 
-            console.log('📝 [RESET] Chamando updateUser...');
-            const { data, error } = await supabase.auth.updateUser({
-                password: password
+            console.log('� [RESET] Token encontrado, fazendo requisição direta...');
+
+            // 2. Construir a URL da API
+            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+            const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+            if (!supabaseUrl || !supabaseKey) {
+                throw new Error('Configuração do Supabase ausente.');
+            }
+
+            // 3. Fazer a requisição direta (Bypass no SDK)
+            // Endpoint: /auth/v1/user
+            const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    password: password
+                })
             });
 
-            console.log('📊 [RESET] Resultado updateUser:', { data, error });
+            const data = await response.json();
 
-            if (error) throw error;
+            console.log('📊 [RESET] Resposta da API:', { status: response.status, data });
 
+            if (!response.ok) {
+                throw new Error(data.msg || data.error_description || data.message || 'Erro ao atualizar senha');
+            }
+
+            // 4. Sucesso!
+            console.log('🎉 [RESET] Sucesso confirmado!');
             setSuccess(true);
             setTimeout(() => router.push('/'), 3000);
 
