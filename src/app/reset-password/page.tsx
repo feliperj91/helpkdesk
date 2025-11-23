@@ -26,6 +26,51 @@ export default function ResetPasswordPage() {
 
         const checkSession = async () => {
             try {
+                // Verificar se há tokens na URL (hash fragments)
+                console.log('🔗 [SESSION] URL:', window.location.href);
+                console.log('🔗 [SESSION] Hash:', window.location.hash);
+
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                const accessToken = hashParams.get('access_token');
+                const refreshToken = hashParams.get('refresh_token');
+                const type = hashParams.get('type');
+
+                console.log('🎫 [SESSION] Tokens:', {
+                    accessToken: accessToken ? 'SIM' : 'NÃO',
+                    refreshToken: refreshToken ? 'SIM' : 'NÃO',
+                    type: type
+                });
+
+                // Se encontrou tokens de recovery, criar sessão manualmente
+                if (accessToken && type === 'recovery') {
+                    console.log('🔐 [SESSION] Criando sessão com tokens de recovery...');
+
+                    const { data, error } = await supabase.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken || ''
+                    });
+
+                    console.log('📊 [SESSION] Resultado setSession:', {
+                        session: data.session ? 'CRIADA' : 'FALHOU',
+                        error: error,
+                        user: data.session?.user?.email
+                    });
+
+                    if (error) {
+                        console.error('❌ [SESSION] Erro ao criar sessão:', error);
+                        setSessionStatus('unauthenticated');
+                        setError('Link inválido ou expirado. Solicite um novo link.');
+                        return;
+                    }
+
+                    if (data.session) {
+                        console.log('✅ [SESSION] Sessão criada com sucesso!');
+                        setSessionStatus('authenticated');
+                        return;
+                    }
+                }
+
+                // Se não encontrou tokens, verificar sessão existente
                 console.log('🔍 [SESSION] Chamando supabase.auth.getSession()...');
                 const { data: { session }, error } = await supabase.auth.getSession();
 
