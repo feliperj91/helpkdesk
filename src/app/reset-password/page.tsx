@@ -22,22 +22,42 @@ export default function ResetPasswordPage() {
     const router = useRouter();
 
     useEffect(() => {
+        console.log('🔵 [SESSION] useEffect iniciado - verificando sessão...');
+
         const checkSession = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                console.log('🔍 [SESSION] Chamando supabase.auth.getSession()...');
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                console.log('📊 [SESSION] Resultado:', {
+                    session: session ? 'ENCONTRADA' : 'NÃO ENCONTRADA',
+                    error: error,
+                    user: session?.user?.email
+                });
+
                 setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+                console.log('✅ [SESSION] Status definido como:', session ? 'authenticated' : 'unauthenticated');
             } catch (err) {
+                console.error('❌ [SESSION] Erro ao verificar sessão:', err);
                 setSessionStatus('unauthenticated');
             }
         };
 
         checkSession();
 
+        console.log('👂 [SESSION] Configurando listener de mudanças de auth...');
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log('🔄 [SESSION] Mudança de auth detectada:', {
+                event: _event,
+                session: session ? 'ATIVA' : 'NENHUMA'
+            });
             setSessionStatus(session ? 'authenticated' : 'unauthenticated');
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            console.log('🔌 [SESSION] Desconectando listener');
+            subscription.unsubscribe();
+        };
     }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
