@@ -20,6 +20,7 @@ interface AuthContextType {
     profile: Profile | null;
     loading: boolean;
     signOut: () => Promise<void>;
+    refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
     profile: null,
     loading: true,
     signOut: async () => { },
+    refreshProfile: async () => { },
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -40,27 +42,48 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const router = useRouter();
     const pathname = usePathname();
 
-    const fetchProfile = async (userId: string, attempt = 1): Promise<Profile | null> => {
+    const fetchProfile = async (userId: string, accessToken: string, attempt = 1): Promise<Profile | null> => {
         try {
-            console.log(`🔍 [AUTH] Buscando perfil para usuário ${userId} (Tentativa ${attempt})...`);
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .single();
+            console.log(`🔍 [AUTH] Buscando perfil via REST (Tentativa ${attempt})...`);
 
-            if (error) {
-                console.error('❌ [AUTH] Erro ao buscar perfil:', error);
+            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+            const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+            if (!supabaseUrl || !supabaseKey) {
+                console.error('❌ [AUTH] Configuração do Supabase ausente.');
+                return null;
+            }
+
+            // Usar fetch direto para evitar travamento do SDK
+            const response = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}&select=*`, {
+                method: 'GET',
+                headers: {
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                console.error(`❌ [AUTH] Erro HTTP: ${response.status}`);
                 if (attempt < 3) {
                     console.log(`🔄 [AUTH] Tentando novamente em 1s...`);
                     await new Promise(r => setTimeout(r, 1000));
-                    return fetchProfile(userId, attempt + 1);
+                    return fetchProfile(userId, accessToken, attempt + 1);
                 }
                 return null;
             }
 
-            console.log('✅ [AUTH] Perfil encontrado:', data);
-            return data;
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                console.log('✅ [AUTH] Perfil encontrado (REST):', data[0]);
+                return data[0];
+            } else {
+                console.warn('⚠️ [AUTH] Perfil não encontrado no banco.');
+                return null;
+            }
+
         } catch (err) {
             console.error('💥 [AUTH] Erro inesperado ao buscar perfil:', err);
             return null;
@@ -84,7 +107,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
                 if (session?.user) {
                     console.log('👤 [AUTH] Usuário detectado:', session.user.email);
-                    const profileData = await fetchProfile(session.user.id);
+                    const profileData = await fetchProfile(session.user.id, session.access_token);
                     setProfile(profileData);
                 } else {
                     console.log('⚪ [AUTH] Nenhuma sessão ativa.');
@@ -109,7 +132,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                 // Se o perfil já estiver carregado e for o mesmo usuário, não precisa buscar de novo
                 // Mas se for USER_UPDATED ou INITIAL_SESSION, vale a pena garantir
                 if (!profile || profile.id !== session.user.id || event === 'USER_UPDATED') {
-                    const profileData = await fetchProfile(session.user.id);
+                    const profileData = await fetchProfile(session.user.id, session.access_token);
                     setProfile(profileData);
                 }
             } else {
@@ -142,8 +165,17 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         router.push('/');
     };
 
+    const refreshProfile = async () => {
+        if (user && session) {
+            setLoading(true);
+            const profileData = await fetchProfile(user.id, session.access_token);
+            setProfile(profileData);
+            setLoading(false);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, session, profile, loading, signOut }}>
+        <AuthContext.Provider value={{ user, session, profile, loading, signOut, refreshProfile }}>
             {children}
         </AuthContext.Provider>
     );
