@@ -23,15 +23,31 @@ export default function Home() {
         setError(null);
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            // Verificar se o Supabase está configurado
+            if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+                throw new Error('Configuração do Supabase não encontrada. Verifique as variáveis de ambiente.');
+            }
+
+            console.log('Tentando fazer login...', { email });
+
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
+            console.log('Resposta do login:', { data, error });
+
             if (error) throw error;
-            router.push('/dashboard');
+
+            if (data?.session) {
+                console.log('Login bem-sucedido, redirecionando...');
+                router.push('/dashboard');
+            } else {
+                throw new Error('Sessão não foi criada após o login');
+            }
         } catch (err: any) {
-            setError(err.message || 'Erro ao fazer login');
+            console.error('Erro no login:', err);
+            setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
         } finally {
             setLoading(false);
         }
