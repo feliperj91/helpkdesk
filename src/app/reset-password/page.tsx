@@ -25,6 +25,8 @@ export default function ResetPasswordPage() {
     useEffect(() => {
         const checkSession = async () => {
             console.log('Verificando sessão inicial...');
+            console.log('Supabase URL Configurada:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Sim (Inicia com ' + process.env.NEXT_PUBLIC_SUPABASE_URL.substring(0, 15) + '...)' : 'NÃO - Variável indefinida');
+
             const { data: { session } } = await supabase.auth.getSession();
             console.log('Status da sessão:', session ? 'Autenticado' : 'Não autenticado');
             setSessionStatus(session ? 'authenticated' : 'unauthenticated');
@@ -147,8 +149,8 @@ export default function ResetPasswordPage() {
                 <CardHeader className="space-y-1 text-center">
                     <div className="flex justify-center mb-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${sessionStatus === 'authenticated' ? 'bg-emerald-500/10 text-emerald-500' :
-                                sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
-                                    'bg-blue-500/10 text-blue-500'
+                            sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
+                                'bg-blue-500/10 text-blue-500'
                             }`}>
                             {sessionStatus === 'authenticated' ? 'Conectado' :
                                 sessionStatus === 'unauthenticated' ? 'Desconectado' :
