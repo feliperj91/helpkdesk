@@ -108,11 +108,20 @@ export default function ResetPasswordPage() {
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         console.log('🚀 [RESET] Função handleResetPassword iniciada');
+        console.log('🔑 [RESET] Valores:', {
+            password: password,
+            confirmPassword: confirmPassword,
+            passwordLength: password.length,
+            confirmPasswordLength: confirmPassword.length,
+            areEqual: password === confirmPassword
+        });
         setLoading(true);
         setError(null);
 
         if (password !== confirmPassword) {
             console.log('❌ [RESET] Senhas não coincidem');
+            console.log('❌ [RESET] password:', JSON.stringify(password));
+            console.log('❌ [RESET] confirmPassword:', JSON.stringify(confirmPassword));
             setError('As senhas não coincidem');
             setLoading(false);
             return;
@@ -128,24 +137,40 @@ export default function ResetPasswordPage() {
         console.log('✅ [RESET] Validações iniciais passaram');
 
         try {
-            console.log('🔍 [RESET] Iniciando verificação de sessão...');
-            const sessionStart = Date.now();
+            console.log('🔍 [RESET] Verificando status da sessão atual...');
+            console.log('📊 [RESET] sessionStatus:', sessionStatus);
 
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            // Se o status já indica que está autenticado, pular verificação
+            if (sessionStatus === 'authenticated') {
+                console.log('✅ [RESET] Status já autenticado, pulando verificação');
+            } else {
+                console.log('⚠️ [RESET] Status não autenticado, verificando sessão...');
 
-            const sessionTime = Date.now() - sessionStart;
-            console.log(`⏱️ [RESET] Tempo para obter sessão: ${sessionTime}ms`);
-            console.log('📋 [RESET] Sessão:', session ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
-            console.log('📋 [RESET] Erro de sessão:', sessionError);
+                // Adicionar timeout de 5 segundos
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Timeout ao verificar sessão')), 5000)
+                );
 
-            if (sessionError) {
-                console.error('❌ [RESET] Erro ao obter sessão:', sessionError);
-                throw sessionError;
-            }
+                const sessionStart = Date.now();
+                const { data: { session }, error: sessionError } = await Promise.race([
+                    sessionPromise,
+                    timeoutPromise
+                ]) as any;
 
-            if (!session) {
-                console.error('❌ [RESET] Sessão não encontrada');
-                throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
+                const sessionTime = Date.now() - sessionStart;
+                console.log(`⏱️ [RESET] Tempo para obter sessão: ${sessionTime}ms`);
+                console.log('📋 [RESET] Sessão:', session ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
+
+                if (sessionError) {
+                    console.error('❌ [RESET] Erro ao obter sessão:', sessionError);
+                    throw sessionError;
+                }
+
+                if (!session) {
+                    console.error('❌ [RESET] Sessão não encontrada');
+                    throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
+                }
             }
 
             console.log('✅ [RESET] Sessão válida, iniciando atualização de senha...');
