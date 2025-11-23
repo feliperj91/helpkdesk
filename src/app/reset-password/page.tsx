@@ -97,6 +97,17 @@ export default function ResetPasswordPage() {
                 session: session ? 'ATIVA' : 'NENHUMA'
             });
             setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+
+            // Failsafe: Se detectar atualização de usuário, considerar sucesso
+            if (_event === 'USER_UPDATED') {
+                console.log('🎉 [LISTENER] Evento USER_UPDATED detectado! Forçando sucesso...');
+                setLoading(false);
+                setSuccess(true);
+                setTimeout(() => {
+                    console.log('🔄 [LISTENER] Redirecionando...');
+                    router.push('/');
+                }, 3000);
+            }
         });
 
         return () => {
@@ -120,8 +131,6 @@ export default function ResetPasswordPage() {
 
         if (password !== confirmPassword) {
             console.log('❌ [RESET] Senhas não coincidem');
-            console.log('❌ [RESET] password:', JSON.stringify(password));
-            console.log('❌ [RESET] confirmPassword:', JSON.stringify(confirmPassword));
             setError('As senhas não coincidem');
             setLoading(false);
             return;
@@ -140,45 +149,47 @@ export default function ResetPasswordPage() {
             console.log('🔍 [RESET] Verificando status da sessão atual...');
             console.log('📊 [RESET] sessionStatus:', sessionStatus);
 
-            // Se o status já indica que está autenticado, pular verificação
-            if (sessionStatus === 'authenticated') {
-                console.log('✅ [RESET] Status já autenticado, pulando verificação');
-            } else {
-                console.log('⚠️ [RESET] Status não autenticado, verificando sessão...');
+            // Aguardar até que o status não seja mais 'checking'
+            if (sessionStatus === 'checking') {
+                console.log('⏳ [RESET] Aguardando sessão ser processada...');
 
-                // Adicionar timeout de 5 segundos
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Timeout ao verificar sessão')), 5000)
-                );
+                // Aguardar até 10 segundos para o status mudar
+                const maxWait = 10000;
+                const startTime = Date.now();
 
-                const sessionStart = Date.now();
-                const { data: { session }, error: sessionError } = await Promise.race([
-                    sessionPromise,
-                    timeoutPromise
-                ]) as any;
-
-                const sessionTime = Date.now() - sessionStart;
-                console.log(`⏱️ [RESET] Tempo para obter sessão: ${sessionTime}ms`);
-                console.log('📋 [RESET] Sessão:', session ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
-
-                if (sessionError) {
-                    console.error('❌ [RESET] Erro ao obter sessão:', sessionError);
-                    throw sessionError;
+                while (sessionStatus === 'checking' && (Date.now() - startTime) < maxWait) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
                 }
 
-                if (!session) {
-                    console.error('❌ [RESET] Sessão não encontrada');
-                    throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
+                console.log('📊 [RESET] sessionStatus após aguardar:', sessionStatus);
+
+                if (sessionStatus === 'checking') {
+                    throw new Error('Tempo limite ao aguardar conexão. Por favor, tente novamente.');
                 }
             }
 
-            console.log('✅ [RESET] Sessão válida, iniciando atualização de senha...');
+            // Verificar se está autenticado
+            if (sessionStatus !== 'authenticated') {
+                console.error('❌ [RESET] Status não autenticado:', sessionStatus);
+                throw new Error('Sessão inválida. Por favor, clique no link do email novamente.');
+            }
+
+            console.log('✅ [RESET] Sessão autenticada, iniciando atualização de senha...');
             const updateStart = Date.now();
 
-            const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+            // Adicionar timeout para a atualização da senha
+            const updatePromise = supabase.auth.updateUser({
                 password: password
             });
+
+            const updateTimeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout ao atualizar senha')), 10000)
+            );
+
+            const { data: updateData, error: updateError } = await Promise.race([
+                updatePromise,
+                updateTimeoutPromise
+            ]) as any;
 
             const updateTime = Date.now() - updateStart;
             console.log(`⏱️ [RESET] Tempo para atualizar senha: ${updateTime}ms`);
@@ -215,8 +226,10 @@ export default function ResetPasswordPage() {
             console.log('📢 [RESET] Exibindo erro para usuário:', errorMessage);
             setError(errorMessage);
         } finally {
-            console.log('🏁 [RESET] Finalizando, setLoading(false)');
-            setLoading(false);
+            if (!success) {
+                console.log('🏁 [RESET] Finalizando, setLoading(false)');
+                setLoading(false);
+            }
         }
     };
 
