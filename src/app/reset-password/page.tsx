@@ -43,44 +43,17 @@ export default function ResetPasswordPage() {
                 }
             } catch (e) {
                 console.error('FALHA CRÍTICA DE REDE:', e);
-                alert('Erro de Conexão: O navegador não consegue acessar o servidor do Supabase. Verifique se há bloqueadores de anúncio ou firewall impedindo a conexão.');
-            }
-        };
 
-        const checkSession = async () => {
-            console.log('Verificando sessão inicial...');
-            console.log('URL Atual:', window.location.href);
-            console.log('Hash da URL:', window.location.hash);
+                checkSession();
 
-            // Check for errors in URL
-            if (window.location.hash.includes('error=')) {
-                console.error('Erro detectado na URL!');
-                const params = new URLSearchParams(window.location.hash.substring(1));
-                const errorDescription = params.get('error_description');
-                alert(`Erro no Link: ${errorDescription || 'Link inválido ou expirado'}. Solicite uma nova redefinição de senha.`);
-                setSessionStatus('unauthenticated');
-                return;
-            }
+                // Listen for auth changes
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                    console.log('Mudança de auth:', _event, !!session);
+                    setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+                });
 
-            // Run connection test first
-            await checkConnection();
-
-            console.log('Chamando supabase.auth.getSession()...');
-            const { data: { session } } = await supabase.auth.getSession();
-            console.log('getSession retornou:', session ? 'Sessão Válida' : 'Sem Sessão');
-            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
-        };
-
-        checkSession();
-
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            console.log('Mudança de auth:', _event, !!session);
-            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
-        });
-
-        return () => subscription.unsubscribe();
-    }, []);
+                return () => subscription.unsubscribe();
+            }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -188,8 +161,8 @@ export default function ResetPasswordPage() {
                 <CardHeader className="space-y-1 text-center">
                     <div className="flex justify-center mb-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${sessionStatus === 'authenticated' ? 'bg-emerald-500/10 text-emerald-500' :
-                                sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
-                                    'bg-blue-500/10 text-blue-500'
+                            sessionStatus === 'unauthenticated' ? 'bg-red-500/10 text-red-500' :
+                                'bg-blue-500/10 text-blue-500'
                             }`}>
                             {sessionStatus === 'authenticated' ? 'Conectado' :
                                 sessionStatus === 'unauthenticated' ? 'Desconectado' :
