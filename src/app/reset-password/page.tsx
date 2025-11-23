@@ -23,37 +23,28 @@ export default function ResetPasswordPage() {
 
     // Check session on mount
     useEffect(() => {
-        const checkConnection = async () => {
-            const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-            if (!sbUrl) return;
-
+        const checkSession = async () => {
             try {
-                console.log(`Testando conexão direta com ${sbUrl}...`);
-                // Try to fetch the health check endpoint or just the root
-                const start = Date.now();
-                const res = await fetch(`${sbUrl}/auth/v1/health`, {
-                    method: 'GET',
-                    headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '' }
-                });
-                const end = Date.now();
-                console.log(`Conexão direta: ${res.status} ${res.statusText} (${end - start}ms)`);
+                console.log('Verificando sessão...');
+                const { data: { session } } = await supabase.auth.getSession();
+                console.log('Sessão encontrada:', !!session);
+                setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+            } catch (err) {
+                console.error('Erro ao verificar sessão:', err);
+                setSessionStatus('unauthenticated');
+            }
+        };
 
-                if (!res.ok) {
-                    console.error('Erro na conexão direta:', await res.text());
-                }
-            } catch (e) {
-                console.error('FALHA CRÍTICA DE REDE:', e);
+        checkSession();
 
-                checkSession();
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log('Mudança de auth:', _event, !!session);
+            setSessionStatus(session ? 'authenticated' : 'unauthenticated');
+        });
 
-                // Listen for auth changes
-                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-                    console.log('Mudança de auth:', _event, !!session);
-                    setSessionStatus(session ? 'authenticated' : 'unauthenticated');
-                });
-
-                return () => subscription.unsubscribe();
-            }, []);
+        return () => subscription.unsubscribe();
+    }, []);
 
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -73,34 +64,21 @@ export default function ResetPasswordPage() {
         }
 
         try {
-            // Tenta obter a sessão atual com timeout
-            console.log('Verificando sessão...');
-
-            const sessionTimeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Tempo limite ao verificar sessão. Recarregue a página.')), 5000);
-            });
-
-            const sessionPromise = supabase.auth.getSession();
-
-            let { data: { session } } = await Promise.race([sessionPromise, sessionTimeoutPromise]) as any;
-
-            console.log('Sessão encontrada:', !!session);
+            console.log('Verificando sessão antes de atualizar senha...');
+            const { data: { session } } = await supabase.auth.getSession();
 
             if (!session) {
                 throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
             }
 
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Tempo limite da requisição excedido. Verifique sua conexão.')), 10000);
-            });
-
-            const updatePromise = supabase.auth.updateUser({
+            console.log('Atualizando senha...');
+            const { error } = await supabase.auth.updateUser({
                 password: password
             });
 
-            const { error } = await Promise.race([updatePromise, timeoutPromise]) as any;
-
             if (error) throw error;
+
+            console.log('Senha atualizada com sucesso!');
             setSuccess(true);
 
             // Redirect to login after 3 seconds
