@@ -56,9 +56,15 @@ export default function ResetPasswordPage() {
                 throw new Error('Sessão inválida ou expirada. Por favor, clique no link do email novamente.');
             }
 
-            const { error } = await supabase.auth.updateUser({
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Tempo limite da requisição excedido. Verifique sua conexão.')), 10000);
+            });
+
+            const updatePromise = supabase.auth.updateUser({
                 password: password
             });
+
+            const { error } = await Promise.race([updatePromise, timeoutPromise]) as any;
 
             if (error) throw error;
             setSuccess(true);

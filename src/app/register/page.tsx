@@ -24,7 +24,12 @@ export default function RegisterPage() {
         setError(null);
 
         try {
-            const { error } = await supabase.auth.signUp({
+            // Create a timeout promise that rejects after 10 seconds
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Tempo limite da requisição excedido. Verifique sua conexão.')), 10000);
+            });
+
+            const signUpPromise = supabase.auth.signUp({
                 email,
                 password,
                 options: {
@@ -34,10 +39,14 @@ export default function RegisterPage() {
                 },
             });
 
+            // Race between the signUp and the timeout
+            const { error } = await Promise.race([signUpPromise, timeoutPromise]) as any;
+
             if (error) throw error;
 
             router.push('/dashboard');
         } catch (err: any) {
+            console.error('Erro no cadastro:', err);
             setError(err.message || 'Erro ao cadastrar');
         } finally {
             setLoading(false);
