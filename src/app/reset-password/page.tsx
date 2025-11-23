@@ -174,25 +174,43 @@ export default function ResetPasswordPage() {
                 throw new Error('Sessão inválida. Por favor, clique no link do email novamente.');
             }
 
-            console.log('✅ [RESET] Sessão autenticada, iniciando atualização de senha...');
+            console.log('🔄 [RESET] Tentando atualizar sessão antes de prosseguir...');
+            const { error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError) {
+                console.warn('⚠️ [RESET] Erro ao atualizar sessão (não fatal):', refreshError);
+            }
+
+            console.log('✅ [RESET] Sessão pronta, iniciando atualização de senha...');
             const updateStart = Date.now();
 
-            // Adicionar timeout para a atualização da senha
-            const updatePromise = supabase.auth.updateUser({
-                password: password
-            });
+            // Função para tentar atualizar com retry
+            const attemptUpdate = async (attempt = 1): Promise<any> => {
+                console.log(`🔄 [RESET] Tentativa de atualização ${attempt}/2...`);
 
-            const updateTimeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Timeout ao atualizar senha')), 10000)
-            );
+                const updatePromise = supabase.auth.updateUser({
+                    password: password
+                });
 
-            const { data: updateData, error: updateError } = await Promise.race([
-                updatePromise,
-                updateTimeoutPromise
-            ]) as any;
+                const timeoutMs = 15000; // 15 segundos
+                const updateTimeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error(`Timeout na tentativa ${attempt}`)), timeoutMs)
+                );
+
+                try {
+                    return await Promise.race([updatePromise, updateTimeoutPromise]);
+                } catch (err) {
+                    if (attempt < 2) {
+                        console.log(`⚠️ [RESET] Tentativa ${attempt} falhou, tentando novamente...`);
+                        return attemptUpdate(attempt + 1);
+                    }
+                    throw err;
+                }
+            };
+
+            const { data: updateData, error: updateError } = await attemptUpdate();
 
             const updateTime = Date.now() - updateStart;
-            console.log(`⏱️ [RESET] Tempo para atualizar senha: ${updateTime}ms`);
+            console.log(`⏱️ [RESET] Tempo total para atualizar senha: ${updateTime}ms`);
             console.log('📊 [RESET] Dados da atualização:', updateData);
             console.log('📊 [RESET] Erro da atualização:', updateError);
 
