@@ -335,13 +335,20 @@ export default function ResetPasswordPage() {
                         <Button
                             type="submit"
                             className="w-full"
-                            disabled={loading}
+                            disabled={loading || sessionStatus !== 'authenticated'}
                         >
                             {loading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Redefinindo...
                                 </>
+                            ) : sessionStatus === 'checking' ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Aguardando conexão...
+                                </>
+                            ) : sessionStatus === 'unauthenticated' ? (
+                                'Link Inválido'
                             ) : (
                                 'Redefinir Senha'
                             )}
