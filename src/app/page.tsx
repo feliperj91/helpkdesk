@@ -23,26 +23,83 @@ export default function Home() {
         setError(null);
 
         try {
+            console.log('🚀 [LOGIN] Iniciando processo de login...');
+
             if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-                throw new Error('Configuração do Supabase não encontrada. Verifique as variáveis de ambiente.');
+                throw new Error('Configuração do Supabase não encontrada.');
             }
 
-            const { data, error } = await supabase.auth.signInWithPassword({
+            // Tentativa 1: SDK Padrão com Timeout
+            console.log('🔄 [LOGIN] Tentando via SDK...');
+            const loginPromise = supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
-            if (error) throw error;
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('TIMEOUT_SDK')), 5000)
+            );
 
-            if (data?.session) {
-                router.push('/dashboard');
-            } else {
-                throw new Error('Sessão não foi criada após o login');
+            try {
+                const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
+
+                if (error) throw error;
+
+                if (data?.session) {
+                    console.log('✅ [LOGIN] Sucesso via SDK!');
+                    router.push('/dashboard');
+                    return;
+                }
+            } catch (err: any) {
+                if (err.message === 'TIMEOUT_SDK') {
+                    console.warn('⚠️ [LOGIN] Timeout no SDK, tentando via API REST...');
+                } else {
+                    throw err; // Se for erro de senha incorreta, joga pra fora
+                }
             }
+
+            // Tentativa 2: Fallback para API REST
+            console.log('🔄 [LOGIN] Tentando via API REST direta...');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+                },
+                body: JSON.stringify({
+                    email,
+                    password
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error_description || data.msg || 'Erro ao fazer login');
+            }
+
+            console.log('✅ [LOGIN] Sucesso via API REST! Configurando sessão...');
+
+            // Hidratar a sessão no SDK para o resto do app funcionar
+            const { error: sessionError } = await supabase.auth.setSession({
+                access_token: data.access_token,
+                refresh_token: data.refresh_token
+            });
+
+            if (sessionError) {
+                console.error('❌ [LOGIN] Erro ao salvar sessão:', sessionError);
+                // Mesmo com erro no setSession, vamos tentar redirecionar pois o cookie pode ter sido setado
+            }
+
+            router.push('/dashboard');
+
         } catch (err: any) {
+            console.error('💥 [LOGIN] Erro:', err);
             setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
         } finally {
-            setLoading(false);
+            // Só tira o loading se der erro, se der sucesso vai redirecionar
+            // Mas como o router.push é assíncrono, melhor garantir que não fique travado se o redirecionamento falhar
+            setTimeout(() => setLoading(false), 2000);
         }
     };
 
